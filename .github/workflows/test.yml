@@ -25,7 +25,7 @@ jobs:
         run: |
           VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "maven_version=$VERSION" >> $GITHUB_ENV
-          echo "VERSION from POM: $VERSION"
+          echo "VERSION from pom.xml: $VERSION"
 
 
       - name: Parse version info from tag
@@ -44,13 +44,8 @@ jobs:
           # Update pom.xml to match tag version
           mvn versions:set -DnewVersion=$VERSION
 
-      # - run: |
-      #     IMG="ghcr.io/${{ github.repository }}"
-      #     IMG=${IMG@L}
-      #     docker build \
-      #       --tag $IMG:${{ env.version }} \
-      #       --tag $IMG:${{ env.version_major }}.${{ env.version_minor }}.latest \
-      #       --tag $IMG:${{ env.version_major }}.latest \
-      #       --tag $IMG:latest \
-      #       .
-      #     docker push --all-tags $IMG
+      - name: Update pom.xml version
+        run: |
+          echo "Updating POM version to $VERSION"
+          mvn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+          cat pom.xml | head -n 20
