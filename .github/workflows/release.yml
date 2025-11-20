@@ -1,0 +1,71 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Retrieve pom.xml meta-data
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+
+      - name: Parse version info from tag
+        run: |
+          # GITHUB_REF is like refs/tags/v2.3.5, so strip the first 11 chars
+          # VERSION=${GITHUB_REF:11}
+          # Parse version from tag and set environment variables
+          MAJOR=$(echo "$VERSION" | cut -d . -f 1)
+          MINOR=$(echo "$VERSION" | cut -d . -f 2)
+          PATCH_RAW=$(echo "$VERSION" | cut -d . -f 3)
+          PATCH_NUM=$(echo "$PATCH_RAW" | sed 's/-SNAPSHOT//')
+
+          NEXT_PATCH_NUM=$((PATCH_NUM + 1))
+
+          if [[ "$PATCH_RAW" == *"-SNAPSHOT"* ]]; then
+            NEXT_VERSION="$MAJOR.$MINOR.$NEXT_PATCH_NUM-SNAPSHOT"
+          else
+            NEXT_VERSION="$MAJOR.$MINOR.$NEXT_PATCH_NUM"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_ENV
+          echo "version_major=$MAJOR" >> $GITHUB_ENV
+          echo "version_minor=$MINOR" >> $GITHUB_ENV
+          echo "version_patch=$PATCH_NUM" >> $GITHUB_ENV
+          # echo "version_snapshot_suffix=$SNAPSHOT_SUFFIX" >> $GITHUB_ENV
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_ENV
+
+          echo "Bumping version → $NEXT_VERSION"
+
+          # Update pom.xml to match tag version
+          mvn versions:set -DnewVersion=$NEXT_VERSION
+
+      - run: |
+          IMG="ghcr.io/${{ github.repository }}"
+          IMG=${IMG@L}
+          docker build \
+            --tag $IMG:${{ env.version }} \
+            --tag $IMG:${{ env.version_major }}.${{ env.version_minor }}.latest \
+            --tag $IMG:${{ env.version_major }}.latest \
+            --tag $IMG:latest \
+            .
+          docker push --all-tags $IMG
