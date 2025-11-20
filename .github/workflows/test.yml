@@ -34,7 +34,7 @@ jobs:
         run: |
           # GITHUB_REF is like refs/tags/v2.3.5, so strip the first 11 chars
           # VERSION=${GITHUB_REF:11}
-          # Parse version from tag and set environment variables
+          # Parse version from meta-data and set environment variables
           MAJOR=$(echo "$VERSION" | cut -d . -f 1)
           MINOR=$(echo "$VERSION" | cut -d . -f 2)
           PATCH=$(echo "$VERSION" | cut -d . -f 3)
@@ -42,9 +42,12 @@ jobs:
           echo "version_major=$MAJOR" >> $GITHUB_ENV
           echo "version_minor=$MINOR" >> $GITHUB_ENV
           echo "version_patch=$PATCH" >> $GITHUB_ENV
+          echo "version_snapshot_suffix=$SNAPSHOT_SUFFIX" >> $GITHUB_ENV
 
-          # Update pom.xml to match tag version
-          mvn versions:set -DnewVersion=$VERSION
+          echo "major=$MAJOR minor=$MINOR patch=$PATCH suffix=$SNAPSHOT_SUFFIX"
+
+          # # Update pom.xml to match tag version
+          # mvn versions:set -DnewVersion=$VERSION
 
       - name: Update pom.xml version
         run: |
