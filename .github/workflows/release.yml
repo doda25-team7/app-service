@@ -59,7 +59,9 @@ jobs:
           # Update pom.xml to match tag version
           mvn versions:set -DnewVersion=$NEXT_VERSION
 
-      - run: |
+      - name: Build and push Docker image
+        if: ${{ hashFiles('Dockerfile') != '' }}
+        run: |
           IMG="ghcr.io/${{ github.repository }}"
           IMG=${IMG@L}
           docker build \
