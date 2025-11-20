@@ -1,7 +1,8 @@
 name: Release
 on:
-  push:
-    braches:
+  pull_request:
+    types: [assigned]
+    branches:
       - main
 
 jobs:
@@ -53,9 +54,6 @@ jobs:
           echo "version_patch=$PATCH_NUM" >> $GITHUB_ENV
           echo "next_version=$NEXT_VERSION" >> $GITHUB_ENV
         
-      - name: Bump version
-        if: ${{ github.ref_name == 'main' }}
-        run: |
           echo "Bumping version → $NEXT_VERSION"
 
           # Update pom.xml to match tag version
