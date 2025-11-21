@@ -70,6 +70,9 @@ jobs:
           
           git add pom.xml
           git commit -m "Bump version to $NEXT_VERSION [skip ci]"
+
+          # Pull latest changes to prevent conflicts and push
+          git pull --rebase origin ${{ github.ref_name }}
           git push origin ${{ github.ref_name }}
 
       - name: Build and push Docker image
