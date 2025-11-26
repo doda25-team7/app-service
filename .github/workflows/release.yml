@@ -75,15 +75,20 @@ jobs:
           git pull --rebase origin ${{ github.ref_name }}
           git push origin ${{ github.ref_name }}
 
-      - name: Build and push Docker image
-        if: ${{ hashFiles('Dockerfile') != '' }}
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build and push Docker images
         run: |
-          IMG="ghcr.io/${{ github.repository }}"
+          IMG="ghcr.io/${{github.repository}}"
           IMG=${IMG@L}
-          docker build \
+          docker buildx build --platform linux/amd64,linux/arm64 \
             --tag $IMG:${{ env.version }} \
             --tag $IMG:${{ env.version_major }}.${{ env.version_minor }}.latest \
             --tag $IMG:${{ env.version_major }}.latest \
             --tag $IMG:latest \
+            --push \
             .
-          docker push --all-tags $IMG
