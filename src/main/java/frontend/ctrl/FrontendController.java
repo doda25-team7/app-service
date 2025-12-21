@@ -53,6 +53,7 @@ public class FrontendController {
 
     @GetMapping("/")
     public String index(Model m) {
+        MetricsController.indexRequests.incrementAndGet();
         m.addAttribute("hostname", modelHost);
         return "sms/index";
     }
@@ -60,8 +61,12 @@ public class FrontendController {
     @PostMapping({ "", "/" })
     @ResponseBody
     public Sms predict(@RequestBody Sms sms) {
+        MetricsController.predictRequests.incrementAndGet();
         System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
+        long start = System.nanoTime();
         sms.result = getPrediction(sms);
+        double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
+        MetricsController.observePredictionLatency(seconds);
         System.out.printf("Prediction: %s\n", sms.result);
         return sms;
     }
