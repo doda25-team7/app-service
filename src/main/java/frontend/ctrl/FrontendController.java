@@ -15,19 +15,61 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import frontend.data.Sms;
 import jakarta.servlet.http.HttpServletRequest;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.Gauge;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Controller
 @RequestMapping(path = "/sms")
 public class FrontendController {
 
     private String modelHost;
+    private final RestTemplateBuilder rest;
+    private final MeterRegistry registry;
 
-    private RestTemplateBuilder rest;
+    private final Counter indexRequests;
+    private final Counter predictRequests;
+    private final Timer predictionLatency;
 
-    public FrontendController(RestTemplateBuilder rest, Environment env) {
+    // We keep track of counts for the ratio gauge
+    private final AtomicLong indexCount = new AtomicLong(0);
+    private final AtomicLong predictCount = new AtomicLong(0);
+
+    public FrontendController(RestTemplateBuilder rest, Environment env, MeterRegistry registry) {
         this.rest = rest;
         this.modelHost = env.getProperty("MODEL_HOST");
+        this.registry = registry;
         assertModelHost();
+
+        // Initialize Metrics
+        this.indexRequests = Counter.builder("frontend_requests_total")
+                .tag("endpoint", "index")
+                .description("Number of frontend requests by endpoint")
+                .register(registry);
+
+        this.predictRequests = Counter.builder("frontend_requests_total")
+                .tag("endpoint", "predict")
+                .description("Number of frontend requests by endpoint")
+                .register(registry);
+
+        this.predictionLatency = Timer.builder("prediction_latency")
+                .description("Prediction latency")
+                // Histogram bucket configuration if needed, though default Timer is usually
+                // sufficient for basic prompt
+                .publishPercentileHistogram()
+                .register(registry);
+
+        // Gauge for ratio
+        Gauge.builder("prediction_ratio", this, FrontendController::calculateRatio)
+                .description("Ratio of predictions to index visits")
+                .register(registry);
+    }
+
+    private double calculateRatio() {
+        long idx = indexCount.get();
+        return idx == 0 ? 0.0 : (double) predictCount.get() / idx;
     }
 
     private void assertModelHost() {
@@ -53,7 +95,8 @@ public class FrontendController {
 
     @GetMapping("/")
     public String index(Model m) {
-        MetricsController.indexRequests.incrementAndGet();
+        indexRequests.increment();
+        indexCount.incrementAndGet();
         m.addAttribute("hostname", modelHost);
         return "sms/index";
     }
@@ -61,14 +104,17 @@ public class FrontendController {
     @PostMapping({ "", "/" })
     @ResponseBody
     public Sms predict(@RequestBody Sms sms) {
-        MetricsController.predictRequests.incrementAndGet();
+        predictRequests.increment();
+        predictCount.incrementAndGet();
         System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
-        long start = System.nanoTime();
-        sms.result = getPrediction(sms);
-        double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
-        MetricsController.observePredictionLatency(seconds);
-        System.out.printf("Prediction: %s\n", sms.result);
-        return sms;
+
+        Sms result = predictionLatency.record(() -> {
+            sms.result = getPrediction(sms);
+            return sms;
+        });
+
+        System.out.printf("Prediction: %s\n", result.result);
+        return result;
     }
 
     private String getPrediction(Sms sms) {
