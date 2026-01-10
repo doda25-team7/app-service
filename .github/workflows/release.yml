@@ -92,7 +92,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE }}:${{ env.version }}
             ${{ env.IMAGE }}:${{ env.version_major }}.${{ env.version_minor }}.latest
