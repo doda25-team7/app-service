@@ -4,6 +4,8 @@ package frontend.ctrl;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.atomic.DoubleAdder;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +16,6 @@ public class MetricsController {
 
     public static final AtomicLong indexRequests = new AtomicLong(0);
     public static final AtomicLong predictRequests = new AtomicLong(0);
-
 
     private static final ConcurrentHashMap<String, AtomicLong> activeUsers =
             new ConcurrentHashMap<>();
@@ -41,6 +42,12 @@ public class MetricsController {
     private static final ConcurrentHashMap<String, AtomicLong> uiHistogram =
             new ConcurrentHashMap<>();
 
+    // Per (endpoint|method|status) count & sum for histogram
+    private static final ConcurrentHashMap<String, LongAdder> uiCount =
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DoubleAdder> uiSum =
+            new ConcurrentHashMap<>();
+
     public static void observeUiRequest(
             String endpoint, String method, String status, double seconds) {
 
@@ -54,6 +61,11 @@ public class MetricsController {
         // +Inf bucket
         String infKey = endpoint + "|" + method + "|" + status + "|+Inf";
         uiHistogram.computeIfAbsent(infKey, k -> new AtomicLong(0)).incrementAndGet();
+
+        // Count and sum for the histogram (per label set)
+        String baseKey = endpoint + "|" + method + "|" + status;
+        uiCount.computeIfAbsent(baseKey, k -> new LongAdder()).increment();
+        uiSum.computeIfAbsent(baseKey, k -> new DoubleAdder()).add(seconds);
     }
 
     @GetMapping("/metrics")
@@ -97,6 +109,29 @@ public class MetricsController {
              .append(e.getValue().get())
              .append("\n");
         }
+
+        for (Map.Entry<String, LongAdder> e : uiCount.entrySet()) {
+            String[] parts = e.getKey().split("\\|");
+
+            m.append("ui_request_duration_seconds_count")
+             .append("{endpoint=\"").append(parts[0])
+             .append("\",method=\"").append(parts[1])
+             .append("\",status=\"").append(parts[2])
+             .append("\"} ")
+             .append(e.getValue().sum())
+             .append("\n");
+
+            DoubleAdder sum = uiSum.get(e.getKey());
+            m.append("ui_request_duration_seconds_sum")
+             .append("{endpoint=\"").append(parts[0])
+             .append("\",method=\"").append(parts[1])
+             .append("\",status=\"").append(parts[2])
+             .append("\"} ")
+             .append(sum == null ? 0.0 : sum.sum())
+             .append("\n");
+        }
+
+        m.append("# EOF\n");
 
         return m.toString();
     }
