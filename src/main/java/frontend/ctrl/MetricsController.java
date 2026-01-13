@@ -15,9 +15,7 @@ public class MetricsController {
     public static final AtomicLong indexRequests = new AtomicLong(0);
     public static final AtomicLong predictRequests = new AtomicLong(0);
 
-
-    private static final ConcurrentHashMap<String, AtomicLong> activeUsers =
-            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, AtomicLong> activeUsers = new ConcurrentHashMap<>();
 
     public static void userEntered(String page) {
         activeUsers.computeIfAbsent(page, k -> new AtomicLong(0)).incrementAndGet();
@@ -35,11 +33,9 @@ public class MetricsController {
         latencySum += seconds;
     }
 
-    private static final double[] UI_BUCKETS =
-            {0.1, 0.3, 0.5, 1.0, 2.0, 5.0};
+    private static final double[] UI_BUCKETS = { 0.1, 0.3, 0.5, 1.0, 2.0, 5.0 };
 
-    private static final ConcurrentHashMap<String, AtomicLong> uiHistogram =
-            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, AtomicLong> uiHistogram = new ConcurrentHashMap<>();
 
     public static void observeUiRequest(
             String endpoint, String method, String status, double seconds) {
@@ -56,7 +52,7 @@ public class MetricsController {
         uiHistogram.computeIfAbsent(infKey, k -> new AtomicLong(0)).incrementAndGet();
     }
 
-    @GetMapping("/metrics")
+    @GetMapping(value = "/metrics", produces = "text/plain; version=0.0.4; charset=utf-8")
     @ResponseBody
     public String metrics() {
 
@@ -64,39 +60,41 @@ public class MetricsController {
 
         m.append("# TYPE index_requests_total counter\n");
         m.append("index_requests_total ")
-         .append(indexRequests.get()).append("\n");
+                .append(indexRequests.get()).append("\n");
 
         m.append("# TYPE predict_requests_total counter\n");
         m.append("predict_requests_total ")
-         .append(predictRequests.get()).append("\n");
+                .append(predictRequests.get()).append("\n");
 
         m.append("# TYPE active_users gauge\n");
         for (Map.Entry<String, AtomicLong> e : activeUsers.entrySet()) {
             m.append("active_users{page=\"")
-             .append(e.getKey())
-             .append("\"} ")
-             .append(e.getValue().get())
-             .append("\n");
+                    .append(e.getKey())
+                    .append("\"} ")
+                    .append(e.getValue().get())
+                    .append("\n");
         }
 
         m.append("# TYPE prediction_latency_seconds summary\n");
         m.append("prediction_latency_seconds_count ")
-         .append(latencyCount.get()).append("\n");
+                .append(latencyCount.get()).append("\n");
         m.append("prediction_latency_seconds_sum ")
-         .append(latencySum).append("\n");
+                .append(latencySum).append("\n");
 
         m.append("# TYPE ui_request_duration_seconds histogram\n");
         for (Map.Entry<String, AtomicLong> e : uiHistogram.entrySet()) {
             String[] parts = e.getKey().split("\\|");
             m.append("ui_request_duration_seconds_bucket")
-             .append("{endpoint=\"").append(parts[0])
-             .append("\",method=\"").append(parts[1])
-             .append("\",status=\"").append(parts[2])
-             .append("\",le=\"").append(parts[3])
-             .append("\"} ")
-             .append(e.getValue().get())
-             .append("\n");
+                    .append("{endpoint=\"").append(parts[0])
+                    .append("\",method=\"").append(parts[1])
+                    .append("\",status=\"").append(parts[2])
+                    .append("\",le=\"").append(parts[3])
+                    .append("\"} ")
+                    .append(e.getValue().get())
+                    .append("\n");
         }
+
+        m.append("# EOF\n");
 
         return m.toString();
     }
