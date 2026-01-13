@@ -21,7 +21,6 @@ import jakarta.servlet.http.HttpServletRequest;
 public class FrontendController {
 
     private String modelHost;
-
     private RestTemplateBuilder rest;
 
     public FrontendController(RestTemplateBuilder rest, Environment env) {
@@ -47,28 +46,76 @@ public class FrontendController {
 
     @GetMapping("")
     public String redirectToSlash(HttpServletRequest request) {
-        // relative REST requests in JS will end up on / and not on /sms
-        return "redirect:" + request.getRequestURI() + "/";
+        // Track redirect endpoint as a UI request too
+        final String endpoint = request.getRequestURI();
+        final String method = request.getMethod();
+        final long start = System.nanoTime();
+        String status = "302";
+
+        MetricsController.userEntered(endpoint);
+        try {
+            return "redirect:" + request.getRequestURI() + "/";
+        } finally {
+            double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
+            MetricsController.observeUiRequest(endpoint, method, status, seconds);
+            MetricsController.userLeft(endpoint);
+        }
     }
 
     @GetMapping("/")
-    public String index(Model m) {
+    public String index(Model m, HttpServletRequest request) {
         MetricsController.indexRequests.incrementAndGet();
-        m.addAttribute("hostname", modelHost);
-        return "sms/index";
+
+        final String endpoint = request.getRequestURI();
+        final String method = request.getMethod();
+        final long start = System.nanoTime();
+        String status = "200";
+
+        MetricsController.userEntered(endpoint);
+        try {
+            m.addAttribute("hostname", modelHost);
+            return "sms/index";
+        } catch (RuntimeException ex) {
+            status = "500";
+            throw ex;
+        } finally {
+            double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
+            MetricsController.observeUiRequest(endpoint, method, status, seconds);
+            MetricsController.userLeft(endpoint);
+        }
     }
 
     @PostMapping({ "", "/" })
     @ResponseBody
-    public Sms predict(@RequestBody Sms sms) {
+    public Sms predict(@RequestBody Sms sms, HttpServletRequest request) {
         MetricsController.predictRequests.incrementAndGet();
-        System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
-        long start = System.nanoTime();
-        sms.result = getPrediction(sms);
-        double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
-        MetricsController.observePredictionLatency(seconds);
-        System.out.printf("Prediction: %s\n", sms.result);
-        return sms;
+
+        final String endpoint = request.getRequestURI();
+        final String method = request.getMethod();
+        final long start = System.nanoTime();
+        String status = "200";
+
+        MetricsController.userEntered(endpoint);
+        try {
+            System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
+
+            // Prediction latency (your summary metrics)
+            long predStart = System.nanoTime();
+            sms.result = getPrediction(sms);
+            double predSeconds = (System.nanoTime() - predStart) / 1_000_000_000.0;
+            MetricsController.recordPredictionLatency(predSeconds);
+
+            System.out.printf("Prediction: %s\n", sms.result);
+            return sms;
+        } catch (RuntimeException ex) {
+            status = "500";
+            throw ex;
+        } finally {
+            // UI request duration histogram (overall handler time)
+            double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
+            MetricsController.observeUiRequest(endpoint, method, status, seconds);
+            MetricsController.userLeft(endpoint);
+        }
     }
 
     private String getPrediction(Sms sms) {
