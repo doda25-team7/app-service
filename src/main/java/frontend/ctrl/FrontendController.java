@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import frontend.data.Sms;
@@ -19,6 +20,8 @@ import jakarta.servlet.http.HttpServletRequest;
 @Controller
 @RequestMapping(path = "/sms")
 public class FrontendController {
+
+    private static final String SMS_PAGE_LABEL = "/sms/";
 
     private String modelHost;
     private RestTemplateBuilder rest;
@@ -44,21 +47,28 @@ public class FrontendController {
         }
     }
 
+    /**
+     * Normalize endpoint labels so metrics do not split between "/sms" and "/sms/".
+     */
+    private static String normalizeEndpointForMetrics(String requestUri) {
+        if (requestUri == null) return SMS_PAGE_LABEL;
+        if (requestUri.equals("/sms")) return SMS_PAGE_LABEL;
+        return requestUri;
+    }
+
     @GetMapping("")
     public String redirectToSlash(HttpServletRequest request) {
         // Track redirect endpoint as a UI request too
-        final String endpoint = request.getRequestURI();
+        final String endpoint = normalizeEndpointForMetrics(request.getRequestURI());
         final String method = request.getMethod();
         final long start = System.nanoTime();
-        String status = "302";
+        final String status = "302";
 
-        MetricsController.userEntered(endpoint);
         try {
             return "redirect:" + request.getRequestURI() + "/";
         } finally {
             double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
             MetricsController.observeUiRequest(endpoint, method, status, seconds);
-            MetricsController.userLeft(endpoint);
         }
     }
 
@@ -66,12 +76,11 @@ public class FrontendController {
     public String index(Model m, HttpServletRequest request) {
         MetricsController.indexRequests.incrementAndGet();
 
-        final String endpoint = request.getRequestURI();
+        final String endpoint = normalizeEndpointForMetrics(request.getRequestURI());
         final String method = request.getMethod();
         final long start = System.nanoTime();
         String status = "200";
 
-        MetricsController.userEntered(endpoint);
         try {
             m.addAttribute("hostname", modelHost);
             return "sms/index";
@@ -81,7 +90,6 @@ public class FrontendController {
         } finally {
             double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
             MetricsController.observeUiRequest(endpoint, method, status, seconds);
-            MetricsController.userLeft(endpoint);
         }
     }
 
@@ -90,12 +98,11 @@ public class FrontendController {
     public Sms predict(@RequestBody Sms sms, HttpServletRequest request) {
         MetricsController.predictRequests.incrementAndGet();
 
-        final String endpoint = request.getRequestURI();
+        final String endpoint = normalizeEndpointForMetrics(request.getRequestURI());
         final String method = request.getMethod();
         final long start = System.nanoTime();
         String status = "200";
 
-        MetricsController.userEntered(endpoint);
         try {
             System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
 
@@ -114,8 +121,44 @@ public class FrontendController {
             // UI request duration histogram (overall handler time)
             double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
             MetricsController.observeUiRequest(endpoint, method, status, seconds);
-            MetricsController.userLeft(endpoint);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Heartbeat endpoints for active user tracking
+    // ---------------------------------------------------------------------
+
+    /**
+     * Called by the browser when the user opens the page.
+     * Example: POST /sms/active/enter?page=/sms/
+     */
+    @PostMapping("/active/enter")
+    @ResponseBody
+    public void activeEnter(@RequestParam String page, HttpServletRequest request) {
+        String sessionId = request.getSession(true).getId();
+        MetricsController.heartbeatEnter(page, sessionId);
+    }
+
+    /**
+     * Called periodically by browser to keep session active.
+     * Example: POST /sms/active/ping?page=/sms/
+     */
+    @PostMapping("/active/ping")
+    @ResponseBody
+    public void activePing(@RequestParam String page, HttpServletRequest request) {
+        String sessionId = request.getSession(true).getId();
+        MetricsController.heartbeatPing(page, sessionId);
+    }
+
+    /**
+     * Best-effort call when tab is closing/unloading.
+     * Example: POST /sms/active/leave?page=/sms/
+     */
+    @PostMapping("/active/leave")
+    @ResponseBody
+    public void activeLeave(@RequestParam String page, HttpServletRequest request) {
+        String sessionId = request.getSession(true).getId();
+        MetricsController.heartbeatLeave(page, sessionId);
     }
 
     private String getPrediction(Sms sms) {
