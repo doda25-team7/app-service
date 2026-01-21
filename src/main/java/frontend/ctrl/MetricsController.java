@@ -94,8 +94,7 @@ public class MetricsController {
         uiSum.computeIfAbsent(baseKey, k -> new DoubleAdder()).add(seconds);
     }
 
-
-    @GetMapping("/metrics")
+    @GetMapping(value = "/metrics", produces = "text/plain; version=0.0.4; charset=utf-8")
     @ResponseBody
     public String metrics() {
         StringBuilder m = new StringBuilder();
@@ -132,13 +131,13 @@ public class MetricsController {
         for (Map.Entry<String, AtomicLong> e : uiHistogram.entrySet()) {
             String[] parts = e.getKey().split("\\|");
             m.append("ui_request_duration_seconds_bucket")
-             .append("{endpoint=\"").append(parts[0])
-             .append("\",method=\"").append(parts[1])
-             .append("\",status=\"").append(parts[2])
-             .append("\",le=\"").append(parts[3])
-             .append("\"} ")
-             .append(e.getValue().get())
-             .append("\n");
+                    .append("{endpoint=\"").append(parts[0])
+                    .append("\",method=\"").append(parts[1])
+                    .append("\",status=\"").append(parts[2])
+                    .append("\",le=\"").append(parts[3])
+                    .append("\"} ")
+                    .append(e.getValue().get())
+                    .append("\n");
         }
 
         for (Map.Entry<String, LongAdder> e : uiCount.entrySet()) {
