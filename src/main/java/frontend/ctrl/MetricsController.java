@@ -16,19 +16,22 @@ public class MetricsController {
     public static final AtomicLong indexRequests = new AtomicLong(0);
     public static final AtomicLong predictRequests = new AtomicLong(0);
 
-    // Active users heartbeat:
-    // page -> (sessionId -> lastSeenEpochMillis)
     private static final ConcurrentHashMap<String, ConcurrentHashMap<String, Long>> activeSessionsByPage =
             new ConcurrentHashMap<>();
 
     // A session is considered active if it pinged within this window
     private static final long ACTIVE_TTL_MILLIS = 60_000;
 
+    // Stable page labels we always want exported (even if 0)
+    public static final String SMS_PAGE_LABEL = "/sms/";
+    private static final String[] KNOWN_PAGES = new String[] { SMS_PAGE_LABEL };
+
     public static void heartbeatEnter(String page, String sessionId) {
         heartbeatPing(page, sessionId);
     }
 
     public static void heartbeatPing(String page, String sessionId) {
+        if (page == null || page.isBlank()) page = SMS_PAGE_LABEL; // safe fallback
         long now = System.currentTimeMillis();
         activeSessionsByPage
                 .computeIfAbsent(page, k -> new ConcurrentHashMap<>())
@@ -36,6 +39,7 @@ public class MetricsController {
     }
 
     public static void heartbeatLeave(String page, String sessionId) {
+        if (page == null || page.isBlank()) page = SMS_PAGE_LABEL; // safe fallback
         ConcurrentHashMap<String, Long> bySession = activeSessionsByPage.get(page);
         if (bySession != null) {
             bySession.remove(sessionId);
@@ -105,8 +109,21 @@ public class MetricsController {
         m.append("# TYPE predict_requests_total counter\n");
         m.append("predict_requests_total ").append(predictRequests.get()).append("\n");
 
+        // Always export known pages (even if 0)
         m.append("# TYPE active_users gauge\n");
+        for (String page : KNOWN_PAGES) {
+            long active = countAndCleanupActive(page);
+            m.append("active_users{page=\"").append(page).append("\"} ").append(active).append("\n");
+        }
+
+        // Export any other pages that might have been tracked dynamically
         for (String page : activeSessionsByPage.keySet()) {
+            boolean isKnown = false;
+            for (String kp : KNOWN_PAGES) {
+                if (kp.equals(page)) { isKnown = true; break; }
+            }
+            if (isKnown) continue;
+
             long active = countAndCleanupActive(page);
             m.append("active_users{page=\"").append(page).append("\"} ").append(active).append("\n");
         }
@@ -119,12 +136,12 @@ public class MetricsController {
         for (Map.Entry<String, AtomicLong> e : uiRequestsTotal.entrySet()) {
             String[] parts = e.getKey().split("\\|");
             m.append("ui_requests_total")
-            .append("{endpoint=\"").append(parts[0])
-            .append("\",method=\"").append(parts[1])
-            .append("\",status=\"").append(parts[2])
-            .append("\"} ")
-            .append(e.getValue().get())
-            .append("\n");
+             .append("{endpoint=\"").append(parts[0])
+             .append("\",method=\"").append(parts[1])
+             .append("\",status=\"").append(parts[2])
+             .append("\"} ")
+             .append(e.getValue().get())
+             .append("\n");
         }
 
         m.append("# TYPE ui_request_duration_seconds histogram\n");

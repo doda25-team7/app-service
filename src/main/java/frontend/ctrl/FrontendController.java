@@ -21,7 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 @RequestMapping(path = "/sms")
 public class FrontendController {
 
-    private static final String SMS_PAGE_LABEL = "/sms/";
+    private static final String SMS_PAGE_LABEL = MetricsController.SMS_PAGE_LABEL;
 
     private String modelHost;
     private RestTemplateBuilder rest;
@@ -47,18 +47,20 @@ public class FrontendController {
         }
     }
 
-    /**
-     * Normalize endpoint labels so metrics do not split between "/sms" and "/sms/".
-     */
     private static String normalizeEndpointForMetrics(String requestUri) {
         if (requestUri == null) return SMS_PAGE_LABEL;
         if (requestUri.equals("/sms")) return SMS_PAGE_LABEL;
         return requestUri;
     }
 
+    private static String normalizePageLabel(String page) {
+        // Force a stable label to avoid high-cardinality metrics
+        return SMS_PAGE_LABEL;
+    }
+
     @GetMapping("")
     public String redirectToSlash(HttpServletRequest request) {
-        // Track redirect endpoint as a UI request too
+        // Track redirect endpoint as a UI request
         final String endpoint = normalizeEndpointForMetrics(request.getRequestURI());
         final String method = request.getMethod();
         final long start = System.nanoTime();
@@ -75,6 +77,10 @@ public class FrontendController {
     @GetMapping("/")
     public String index(Model m, HttpServletRequest request) {
         MetricsController.indexRequests.incrementAndGet();
+
+        // Auto-heartbeat so active_users becomes non-zero without frontend JS
+        String sessionId = request.getSession(true).getId();
+        MetricsController.heartbeatPing(SMS_PAGE_LABEL, sessionId);
 
         final String endpoint = normalizeEndpointForMetrics(request.getRequestURI());
         final String method = request.getMethod();
@@ -98,6 +104,10 @@ public class FrontendController {
     public Sms predict(@RequestBody Sms sms, HttpServletRequest request) {
         MetricsController.predictRequests.incrementAndGet();
 
+        // Auto-heartbeat on POST too
+        String sessionId = request.getSession(true).getId();
+        MetricsController.heartbeatPing(SMS_PAGE_LABEL, sessionId);
+
         final String endpoint = normalizeEndpointForMetrics(request.getRequestURI());
         final String method = request.getMethod();
         final long start = System.nanoTime();
@@ -106,7 +116,7 @@ public class FrontendController {
         try {
             System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
 
-            // Prediction latency (your summary metrics)
+            // Prediction latency
             long predStart = System.nanoTime();
             sms.result = getPrediction(sms);
             double predSeconds = (System.nanoTime() - predStart) / 1_000_000_000.0;
@@ -118,47 +128,31 @@ public class FrontendController {
             status = "500";
             throw ex;
         } finally {
-            // UI request duration histogram (overall handler time)
+            // UI request duration histogram
             double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
             MetricsController.observeUiRequest(endpoint, method, status, seconds);
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Heartbeat endpoints for active user tracking
-    // ---------------------------------------------------------------------
-
-    /**
-     * Called by the browser when the user opens the page.
-     * Example: POST /sms/active/enter?page=/sms/
-     */
     @PostMapping("/active/enter")
     @ResponseBody
     public void activeEnter(@RequestParam String page, HttpServletRequest request) {
         String sessionId = request.getSession(true).getId();
-        MetricsController.heartbeatEnter(page, sessionId);
+        MetricsController.heartbeatEnter(normalizePageLabel(page), sessionId);
     }
 
-    /**
-     * Called periodically by browser to keep session active.
-     * Example: POST /sms/active/ping?page=/sms/
-     */
     @PostMapping("/active/ping")
     @ResponseBody
     public void activePing(@RequestParam String page, HttpServletRequest request) {
         String sessionId = request.getSession(true).getId();
-        MetricsController.heartbeatPing(page, sessionId);
+        MetricsController.heartbeatPing(normalizePageLabel(page), sessionId);
     }
 
-    /**
-     * Best-effort call when tab is closing/unloading.
-     * Example: POST /sms/active/leave?page=/sms/
-     */
     @PostMapping("/active/leave")
     @ResponseBody
     public void activeLeave(@RequestParam String page, HttpServletRequest request) {
         String sessionId = request.getSession(true).getId();
-        MetricsController.heartbeatLeave(page, sessionId);
+        MetricsController.heartbeatLeave(normalizePageLabel(page), sessionId);
     }
 
     private String getPrediction(Sms sms) {
