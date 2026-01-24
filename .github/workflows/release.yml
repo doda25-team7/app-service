@@ -33,7 +33,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
 
-      - name: Parse version info from tag
+      - name: Parse version info from tag && Commit version
         run: |
           MAJOR=$(echo "$VERSION" | cut -d . -f 1)
           MINOR=$(echo "$VERSION" | cut -d . -f 2)
@@ -62,8 +62,6 @@ jobs:
           # Update pom.xml to match tag version
           mvn versions:set -DnewVersion=$NEXT_VERSION
 
-      - name: Commit updated pom.xml
-        run: |
           # Used copilot to help set up this config
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -71,9 +69,14 @@ jobs:
           git add pom.xml
           git commit -m "Bump version to $NEXT_VERSION [skip ci]"
 
+          # Tag the release
+          git tag "v$VERSION"
+
           # Pull latest changes to prevent conflicts and push
           git pull --rebase origin ${{ github.ref_name }}
-          git push origin ${{ github.ref_name }}
+
+          git push origin ${{ github.ref_name }} --tags
+      
       
       - name: Compute image name (lowercase)
         run: |
