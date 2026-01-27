@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    registries:
+      - github-packages
+    open-pull-requests-limit: 10
+
+registries:
+  github-packages:
+    type: maven-repository
+    url: https://maven.pkg.github.com/doda25-team7/lib-version
+    username: ${{ secrets.GITHUB_USERNAME }}
+    password: ${{ secrets.GITHUB_TOKEN }}
+
