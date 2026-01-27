@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM eclipse-temurin:25-jdk AS build
 
 WORKDIR /build
@@ -8,15 +9,15 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ARG GITHUB_USERNAME
-ARG GITHUB_TOKEN
-
 COPY pom.xml .
 COPY src ./src
-RUN mkdir -p /root/.m2 && \
-    echo "<settings><servers><server><id>github</id><username>${GITHUB_USERNAME}</username><password>${GITHUB_TOKEN}</password></server></servers></settings>" > /root/.m2/settings.xml
 
-RUN mvn package
+RUN --mount=type=secret,id=GITHUB_USERNAME \
+    --mount=type=secret,id=GITHUB_TOKEN \
+    mkdir -p /root/.m2 && \
+    echo "<settings><servers><server><id>github</id><username>$(cat /run/secrets/GITHUB_USERNAME)</username><password>$(cat /run/secrets/GITHUB_TOKEN)</password></server></servers></settings>" > /root/.m2/settings.xml && \
+    mvn package -DskipTests && \
+    rm -f /root/.m2/settings.xml
 
 FROM eclipse-temurin:25-jre
 
