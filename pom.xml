@@ -44,7 +44,7 @@
 		<dependency>
 			<groupId>org.example</groupId>
 			<artifactId>lib-version</artifactId>
-			<version>1.0.5</version>
+			<version>${lib-version.version}</version>
 		</dependency>
 	</dependencies>
 
