@@ -96,6 +96,9 @@ jobs:
           file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            GITHUB_USERNAME=${{ secrets.GH_USERNAME }}
+            GITHUB_TOKEN=${{ secrets.GH_TOKEN }}
           tags: |
             ${{ env.IMAGE }}:${{ env.version }}
             ${{ env.IMAGE }}:${{ env.version_major }}.${{ env.version_minor }}.latest
