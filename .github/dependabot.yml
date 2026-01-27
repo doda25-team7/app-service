@@ -12,6 +12,6 @@ registries:
   github-packages:
     type: maven-repository
     url: https://maven.pkg.github.com/doda25-team7/lib-version
-    username: ${{ secrets.GITHUB_USERNAME }}
+    username: ${{ github.actor }}
     password: ${{ secrets.GITHUB_TOKEN }}
 

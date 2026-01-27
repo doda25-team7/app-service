@@ -33,6 +33,19 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
 
+      - name: Configure Maven Settings
+        run: |
+          # Rename the file
+          cp mavensettings.xml.example mavensettings.xml
+          
+          # Replace placeholders with environment variables
+          # Using | as a delimiter in sed to avoid issues if passwords contain /
+          sed -i "s/GITHUB_USERNAME/${{ github.actor }}/g" mavensettings.xml
+          sed -i "s/GITHUB_PASSWORD/${{ secrets.GITHUB_TOKEN }}/g" mavensettings.xml
+          
+          echo "Maven settings configured."
+
+
       - name: Parse version info from tag && Commit version
         run: |
           MAJOR=$(echo "$VERSION" | cut -d . -f 1)
